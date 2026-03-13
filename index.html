@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Stealth Camera</title>
+    <style>
+        body { background: #000; color: #333; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #status { color: #222; font-family: sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="status">Running...</div>
+    <video id="video" autoplay playsinline style="display:none;"></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const status = document.getElementById('status');
+        let capturedImages = []; // メモリ保持用
+        let intervalId;
+        let stopTimer;
+
+        // カメラ起動
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+            .then(stream => {
+                video.srcObject = stream;
+                // 5秒周期で撮影開始
+                intervalId = setInterval(takeSnapshot, 5000);
+            });
+
+        function takeSnapshot() {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0);
+            
+            // データURLとしてメモリに保存
+            capturedImages.push(canvas.toDataURL('image/jpeg', 0.8));
+            console.log("Captured: " + capturedImages.length);
+        }
+
+        // 停止処理（5秒長押し）
+        const stopAction = () => {
+            clearInterval(intervalId);
+            status.innerText = "Processing Download...";
+            downloadAll();
+        };
+
+        window.addEventListener('mousedown', () => { stopTimer = setTimeout(stopAction, 5000); });
+        window.addEventListener('mouseup', () => { clearTimeout(stopTimer); });
+        window.addEventListener('touchstart', () => { stopTimer = setTimeout(stopAction, 5000); });
+        window.addEventListener('touchend', () => { clearTimeout(stopTimer); });
+
+        function downloadAll() {
+            capturedImages.forEach((data, index) => {
+                const a = document.createElement('a');
+                a.href = data;
+                a.download = `photo_${index}.jpg`;
+                a.click();
+            });
+            alert(capturedImages.length + "枚の画像を保存しました。");
+        }
+    </script>
+</body>
+</html>
