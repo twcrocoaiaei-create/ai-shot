@@ -2,64 +2,153 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Stealth Camera</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stealth Cam Pro</title>
     <style>
-        body { background: #000; color: #333; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        #status { color: #222; font-family: sans-serif; }
+        /* 画面全体を黒く設定（ステルス性） */
+        body { 
+            background: #000; 
+            color: #111; 
+            height: 100vh; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: center; 
+            overflow: hidden; 
+            user-select: none; 
+            -webkit-user-select: none; 
+        }
+        /* 控えめな開始ボタン */
+        #startBtn { 
+            padding: 20px 40px; 
+            font-size: 18px; 
+            background: #111; 
+            color: #444; 
+            border: 1px solid #222; 
+            border-radius: 10px; 
+            cursor: pointer; 
+        }
+        /* 動作確認用の小さな点（5秒に1回緑に光る） */
+        .dot { 
+            width: 4px; 
+            height: 4px; 
+            background: #050; 
+            border-radius: 50%; 
+            display: none; 
+        }
+        #status { margin-top: 20px; }
     </style>
 </head>
 <body>
-    <div id="status">Running...</div>
+
+    <button id="startBtn">START</button>
+    <div id="status"><div class="dot" id="dot"></div></div>
+    
     <video id="video" autoplay playsinline style="display:none;"></video>
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
-        const status = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const dot = document.getElementById('dot');
+        
         let capturedImages = []; // メモリ保持用
         let intervalId;
         let stopTimer;
 
-        // カメラ起動
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        // 1. 開始処理
+        startBtn.addEventListener('click', () => {
+            startBtn.style.display = 'none';
+            dot.style.display = 'block';
+
+            // 背面カメラを優先して起動
+            navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment' } 
+            })
             .then(stream => {
                 video.srcObject = stream;
-                // 5秒周期で撮影開始
+                // 5秒周期(5000ms)で撮影開始
                 intervalId = setInterval(takeSnapshot, 5000);
+            })
+            .catch(err => {
+                alert("カメラが起動できません: " + err);
+                startBtn.style.display = 'block';
             });
+        });
 
+        // 2. 撮影処理（メモリに保存）
         function takeSnapshot() {
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0);
             
-            // データURLとしてメモリに保存
+            // JPEGとしてメモリにスタック
             capturedImages.push(canvas.toDataURL('image/jpeg', 0.8));
+            
+            // 撮影の瞬間だけドットを明るくする
+            dot.style.background = '#0f0';
+            setTimeout(() => { dot.style.background = '#050'; }, 200);
             console.log("Captured: " + capturedImages.length);
         }
 
-        // 停止処理（5秒長押し）
+        // 3. 停止と保存
         const stopAction = () => {
+            if (!intervalId) return;
             clearInterval(intervalId);
-            status.innerText = "Processing Download...";
-            downloadAll();
+            dot.style.display = 'none';
+            
+            const count = capturedImages.length;
+            if (count > 0) {
+                alert(`${count}枚の撮影を終了しました。保存を開始します。ブラウザの許可設定に注意してください。`);
+                downloadAll();
+            } else {
+                alert("撮影された画像がありません。");
+                location.reload();
+            }
         };
 
-        window.addEventListener('mousedown', () => { stopTimer = setTimeout(stopAction, 5000); });
-        window.addEventListener('mouseup', () => { clearTimeout(stopTimer); });
-        window.addEventListener('touchstart', () => { stopTimer = setTimeout(stopAction, 5000); });
-        window.addEventListener('touchend', () => { clearTimeout(stopTimer); });
+        // 長押し判定（5秒）
+        const startPress = () => { stopTimer = setTimeout(stopAction, 5000); };
+        const endPress = () => { clearTimeout(stopTimer); };
 
+        window.addEventListener('mousedown', startPress);
+        window.addEventListener('mouseup', endPress);
+        window.addEventListener('touchstart', startPress);
+        window.addEventListener('touchend', endPress);
+
+        // 4. 一括ダウンロード（ファイル名重複防止）
         function downloadAll() {
+            const now = new Date();
+            const timestamp = now.getFullYear() + 
+                ("0" + (now.getMonth() + 1)).slice(-2) + 
+                ("0" + now.getDate()).slice(-2) + "_" + 
+                ("0" + now.getHours()).slice(-2) + 
+                ("0" + now.getMinutes()).slice(-2);
+
             capturedImages.forEach((data, index) => {
                 const a = document.createElement('a');
                 a.href = data;
-                a.download = `photo_${index}.jpg`;
-                a.click();
+                // photo_日時_連番.jpg
+                a.download = `photo_${timestamp}_${index}.jpg`;
+                document.body.appendChild(a);
+                
+                // ブラウザの負荷を考慮して0.2秒ずつずらして実行
+                setTimeout(() => {
+                    a.click();
+                    document.body.removeChild(a);
+                    
+                    // 最後の1枚をダウンロードし終えたらリロードしてメモリ解放
+                    if (index === capturedImages.length - 1) {
+                        setTimeout(() => {
+                            alert("すべての保存処理をリクエストしました。");
+                            location.reload();
+                        }, 1000);
+                    }
+                }, index * 200); 
             });
-            alert(capturedImages.length + "枚の画像を保存しました。");
         }
     </script>
 </body>
